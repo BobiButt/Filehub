@@ -1,6 +1,6 @@
 [project]
 name = "filehub"
-version = "1.0.0"
+version = "1.0.1"
 description = "LAN file transfer hub — AirDrop-style sharing over a hotspot, browser only"
 requires-python = ">=3.11"
 license = { text = "MIT" }
