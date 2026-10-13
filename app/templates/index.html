@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1117">
+  <title>FileHub</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📂</text></svg>">
+</head>
+<body>
+  <!-- ======================================================= top bar -->
+  <header class="topbar">
+    <div class="logo">📂 File<span>Hub</span></div>
+    <div class="server-url" id="server-url">{{ server_url }}</div>
+    <button class="btn btn-sm" id="qr-btn" title="QR code to join">▦ QR</button>
+    <span class="badge hidden" id="join-code-badge">Code <b id="join-code"></b></span>
+    <button class="btn btn-sm hidden" id="rotate-code-btn" title="Generate a new join code">⟳ Rotate</button>
+    <div class="spacer"></div>
+    <button class="btn btn-sm btn-primary" id="global-send-btn" title="Send a file to the server or another device">📤 Send</button>
+    <span class="pill" id="scheduler-pill" title="Your share of the WiFi bandwidth">—</span>
+    <span class="pill" id="online-count">● 0 online</span>
+    <span class="pill" id="conn-pill">● connecting…</span>
+  </header>
+
+  <!-- ==================================================== 3 panels -->
+  <main class="panels">
+
+    <!-- Panel 1 — Server Files -->
+    <section class="panel panel-files" id="panel-files">
+      <header class="panel-head">
+        <h2>Server Files</h2>
+        <div class="panel-head-actions">
+          <button class="btn btn-sm" id="pick-file-btn">⬆ Upload</button>
+          <input type="file" id="file-input" multiple hidden>
+        </div>
+      </header>
+
+      <div class="dropzone" id="dropzone">
+        <span class="dropzone-text">Drop files here · or tap “Upload”</span>
+      </div>
+
+      <div id="upload-list" class="hidden scroll-box"></div>
+      <div id="files-list" class="scroll-box"></div>
+    </section>
+
+    <!-- Panel 2 — Devices -->
+    <section class="panel panel-devices" id="panel-devices">
+      <div id="pending-section" class="hidden">
+        <h3>Pending Approval</h3>
+        <div id="pending-list" class="scroll-box"></div>
+      </div>
+
+      <h3>Devices</h3>
+
+      <div class="device-card drop-target" id="server-card" data-device="server"
+           title="Drop files here to upload to the server">
+        <div class="device-icon">🗄️</div>
+        <div class="device-info">
+          <div class="device-name">SERVER <span class="badge badge-host">shared</span></div>
+          <div class="device-meta">Drop files → shared folder</div>
+        </div>
+      </div>
+
+      <div id="devices-list" class="scroll-box"></div>
+      <div id="this-device"></div>
+    </section>
+  </main>
+
+  <!-- Panel 3 — Live Traffic -->
+  <section class="panel panel-traffic" id="panel-traffic">
+    <header class="panel-head">
+      <h3>Live Traffic</h3>
+      <button class="btn btn-sm" id="traffic-clear" title="Clear the local log">Clear</button>
+    </header>
+    <div id="traffic-list" class="scroll-box"></div>
+  </section>
+
+  <!-- ======================================================== overlays -->
+
+  <!-- Join overlay -->
+  <div class="overlay {% if has_session %}hidden{% endif %}" id="join-overlay">
+    <div class="dialog">
+      <h1>File<span>Hub</span></h1>
+      <p>LAN file transfer — no install, browser only.</p>
+      <form id="join-form">
+        <label for="join-name">Your device name</label>
+        <input id="join-name" name="name" maxlength="40" placeholder="Ahmed's Phone" autocomplete="nickname" required>
+        <div id="code-field">
+          <label for="join-code-input">Join code from the host's terminal</label>
+          <input id="join-code-input" name="code" class="code-input" inputmode="numeric"
+                 pattern="[0-9]*" maxlength="6" placeholder="––––––">
+        </div>
+        <div class="host-hint hidden" id="host-hint">You are the host — no join code needed.</div>
+        <div class="dialog-error" id="join-error"></div>
+        <button type="submit" class="btn btn-primary" id="join-btn">Join</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Waiting for approval overlay -->
+  <div class="overlay hidden" id="waiting-overlay">
+    <div class="dialog">
+      <div class="spinner"></div>
+      <h1>Waiting for approval</h1>
+      <p>The host must approve this device before you can see the dashboard.<br>
+         This page updates automatically.</p>
+    </div>
+  </div>
+
+  <!-- Rejected / kicked overlay -->
+  <div class="overlay hidden" id="notice-overlay">
+    <div class="dialog">
+      <h1 id="notice-title">Removed</h1>
+      <p id="notice-text"></p>
+      <button class="btn btn-primary" id="notice-refresh">Refresh to rejoin</button>
+    </div>
+  </div>
+
+  <!-- Incoming relay modal -->
+  <div class="overlay hidden" id="relay-modal">
+    <div class="dialog">
+      <h1>Incoming file</h1>
+      <div id="relay-message"></div>
+      <div id="relay-progress" class="hidden">
+        <div class="progress"><div class="progress-bar" style="width:0%"></div></div>
+        <span class="progress-label"></span>
+      </div>
+      <div class="relay-buttons">
+        <button class="btn btn-primary" id="relay-accept">Accept</button>
+        <button class="btn btn-danger" id="relay-decline">Decline</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR modal -->
+  <div class="overlay hidden" id="qr-modal">
+    <div class="dialog">
+      <h1>Scan to join</h1>
+      <p>Same WiFi/hotspot required, then enter the join code.</p>
+      <img id="qr-img" alt="QR code">
+      <button class="btn" id="qr-close" style="margin-top:14px">Close</button>
+    </div>
+  </div>
+
+  <!-- Send-to picker -->
+  <div class="overlay hidden" id="sendto-modal">
+    <div class="dialog">
+      <!-- <h1>📤 Send a file</h1> -->
+
+      <!-- Step 1: pick a file -->
+      <div id="sendto-step-file">
+        <p>Choose a file to send. It will either go to the server's shared
+           folder, or directly to another connected device.</p>
+        <input type="file" id="sendto-input" hidden>
+        <button class="btn btn-primary" id="sendto-pick" style="width:100%">📎 Choose file</button>
+        <div id="sendto-file" class="sendto-file-info">No file chosen yet.</div>
+      </div>
+
+      <!-- Step 2: pick a target -->
+      <div id="sendto-step-target" class="hidden">
+        <div class="sendto-file-banner">
+          <span id="sendto-file-name"></span>
+          <button class="btn btn-sm" id="sendto-change">Change</button>
+        </div>
+        <p style="margin-top:14px">Where should it go?</p>
+        <div id="sendto-list" class="sendto-list"></div>
+      </div>
+
+      <div class="sendto-actions">
+        <button class="btn" id="sendto-cancel">Cancel</button>
+        <button class="btn btn-primary hidden" id="sendto-go">Send now</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    window.__FILEHUB__ = {
+      hasSession: {{ 'true' if has_session else 'false' }},
+      device: {{ device | tojson }},
+      joinCode: {{ join_code | tojson }},
+      isHost: {{ 'true' if is_host else 'false' }},
+      serverUrl: {{ server_url | tojson }},
+      chunkSize: {{ chunk_size }},
+      maxFileSize: {{ max_file_size }}
+    };
+  </script>
+  <script type="module">
+    import { connect, store, on } from "/static/js/ws.js";
+    import { apiPost, fmtSpeed, notify } from "/static/js/util.js";
+    import { initFilesPanel } from "/static/js/panel_files.js";
+    import { initDevicesPanel } from "/static/js/panel_devices.js";
+    import { initTrafficPanel } from "/static/js/panel_traffic.js";
+    import { initApproval } from "/static/js/approval.js";
+    import { initReceiver } from "/static/js/receiver.js";
+    import { initSender } from "/static/js/sender.js";
+    import { initSendToPicker } from "/static/js/sendto.js";
+
+    const boot = window.__FILEHUB__;
+    store.joinCode = boot.joinCode;
+    store.isHost = boot.isHost;
+    if (boot.device?.name) store.localName = boot.device.name;
+
+    const $ = (id) => document.getElementById(id);
+    const show = (id, visible) => $(id)?.classList.toggle("hidden", !visible);
+
+    /* ------------------------------------------------------------ toast --- */
+    let toastTimer = null;
+    window.addEventListener("filehub:notice", (event) => {
+      const toast = $("toast");
+      if (!toast) return;
+      toast.textContent = event.detail;
+      toast.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("show"), 4000);
+    });
+    on("notice", notify);
+
+    /* ----------------------------------------------------- connection UI --- */
+    on("connection", ({ online }) => {
+      const pill = $("conn-pill");
+      if (!pill) return;
+      pill.textContent = online ? "● connected" : "● offline — reconnecting…";
+      pill.classList.toggle("online", online);
+      pill.classList.toggle("offline", !online);
+    });
+
+    /* ---------------------------------------------------- top bar status --- */
+    function updateTopbar() {
+      const pill = $("scheduler-pill");
+      if (pill) {
+        let mySpeed = 0;
+        for (const t of store.transfers.values()) {
+          if (!["active", "paused"].includes(t.status)) continue;
+          if (t.sender_id === store.you?.id || t.receiver_id === store.you?.id) {
+            mySpeed += t.lastSpeed || 0;
+          }
+        }
+        const shared = store.devices.length;
+        pill.textContent = mySpeed > 0
+          ? `Your speed: ${fmtSpeed(mySpeed)} · shared with ${shared}`
+          : `${store.scheduler.your_lanes} lane${store.scheduler.your_lanes === 1 ? "" : "s"} · shared with ${shared}`;
+      }
+      const online = $("online-count");
+      if (online) {
+        const count = store.devices.length + (store.you?.state === "approved" ? 1 : 0);
+        online.textContent = `● ${count} online`;
+      }
+    }
+    ["snapshot", "scheduler_update", "device_joined", "device_left",
+     "device_kicked", "transfer_done", "transfer_failed"].forEach((e) => on(e, updateTopbar));
+    on("transfer_progress", (p) => {
+      const t = store.transfers.get(p.id);
+      if (t) t.lastSpeed = p.speed_bps;
+      updateTopbar();
+    });
+
+    /* --------------------------------------------------------- overlays --- */
+    function syncOverlays() {
+      if (!store.you) return;
+      const state = store.you.state;
+      show("join-overlay", false);
+      show("waiting-overlay", state === "pending");
+      show("notice-overlay", false);
+    }
+    on("snapshot", syncOverlays);
+
+    on("you_kicked", (reason) => {
+      show("waiting-overlay", false);
+      const title = $("notice-title");
+      const text = $("notice-text");
+      if (title) title.textContent = reason === "blocked" ? "Blocked" : "Removed";
+      if (text) {
+        text.textContent =
+          reason === "rejected" ? "The host rejected this device."
+          : reason === "blocked" ? "This device's fingerprint is blocked by the host."
+          : "The host removed this device from the session.";
+      }
+      show("notice-overlay", true);
+    });
+    $("notice-refresh")?.addEventListener("click", () => location.reload());
+
+    /* -------------------------------------------------------- join form --- */
+    const joinForm = $("join-form");
+    if (boot.isHost) {
+      show("code-field", false);
+      $("host-hint")?.classList.remove("hidden");
+    }
+    const savedName = localStorage.getItem("filehub-name");
+    if (savedName && $("join-name")) $("join-name").value = savedName;
+
+    joinForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const name = $("join-name").value.trim();
+      const code = boot.isHost ? "" : $("join-code-input").value.trim();
+      const errorBox = $("join-error");
+      if (!name) { errorBox.textContent = "Enter a device name."; return; }
+      if (!boot.isHost && code.length !== 6) { errorBox.textContent = "Enter the 6-digit join code."; return; }
+      errorBox.textContent = "";
+      $("join-btn").disabled = true;
+      const result = await apiPost("/api/auth/join", {
+        code, name,
+        screen: `${screen.width}x${screen.height}`,
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      });
+      $("join-btn").disabled = false;
+      if (!result.ok) {
+        let message = result.data?.error || "join failed";
+        if (result.data?.cooldown_seconds) message += ` — wait ${result.data.cooldown_seconds}s`;
+        else if (typeof result.data?.attempts_remaining === "number") {
+          message += ` (${result.data.attempts_remaining} attempts left)`;
+        }
+        errorBox.textContent = message;
+        return;
+      }
+      localStorage.setItem("filehub-name", name);
+      store.localName = name;
+      store.isHost = result.data.role === "host";
+      connect(name);
+      if (result.data.state === "pending") show("waiting-overlay", true);
+      else show("join-overlay", false);
+    });
+
+    $("join-code-input")?.addEventListener("input", (event) => {
+      event.target.value = event.target.value.replace(/\D/g, "").slice(0, 6);
+    });
+
+    /* -------------------------------------------------------------- QR --- */
+    $("qr-btn")?.addEventListener("click", () => {
+      const img = $("qr-img");
+      if (img) img.src = `/api/qr?t=${Date.now()}`;
+      show("qr-modal", true);
+    });
+    $("qr-close")?.addEventListener("click", () => show("qr-modal", false));
+    $("qr-modal")?.addEventListener("click", (e) => {
+      if (e.target === e.currentTarget) show("qr-modal", false);
+    });
+
+    /* ----------------------------------------------------- traffic clear --- */
+    $("traffic-clear")?.addEventListener("click", () => {
+      const list = $("traffic-list");
+      if (list) list.innerHTML = "";
+    });
+
+    /* ------------------------------------------------------------- boot --- */
+    initFilesPanel();
+    initDevicesPanel();
+    initTrafficPanel();
+    initApproval();
+    initSender();
+    initReceiver();
+    initSendToPicker();
+
+    if (boot.hasSession) connect(boot.device?.name || "");
+  </script>
+</body>
+</html>

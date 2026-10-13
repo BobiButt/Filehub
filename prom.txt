@@ -1,0 +1,254 @@
+# FileHub — Fix & Complete Pass
+
+You previously built FileHub from a spec. The skeleton runs but 5 critical
+features are broken or missing. Read the existing code first, then fix
+ONLY what's listed below. Do not rewrite working code. Do not add new
+features beyond this list.
+
+IMPORTANT: Before making any change, read ALL of these files:
+  - app/main.py
+  - app/api/upload.py
+  - app/api/download.py
+  - app/api/ws.py
+  - app/core/broadcaster.py
+  - app/core/relay.py
+  - app/static/js/panel_traffic.js
+  - app/static/js/uploader.js
+  - app/static/js/sender.js
+  - app/static/js/receiver.js
+  - app/static/js/panel_files.js
+  - app/static/js/panel_devices.js
+  - app/static/css/style.css
+
+Do not make assumptions. If a file is missing, say so and stop.
+
+---
+
+## ISSUE 1 — Live Traffic panel is empty (nothing appears during transfers)
+
+**Diagnose:** Open `app/static/js/panel_traffic.js` and
+`app/core/broadcaster.py`.
+
+**Expected:** every transfer event (upload start/progress/done, download
+start/done, relay start/progress/done, join/approve/kick/block) must:
+
+1. Call `broadcaster.traffic(event)` on the server with a `TrafficEvent`.
+2. Be sent to every connected dashboard via WS message type `"traffic"`.
+3. Be rendered in `panel_traffic.js` as a row with: time, actor, arrow
+   (⬆ upload / ⬇ download / ➡ relay), filename, target, status/percent.
+4. Update progress inline for active rows using `transfer_progress` events.
+
+**Fix:** ensure the server emits `traffic` on EVERY transfer lifecycle
+event, and the panel subscribes to the WS `"traffic"` and
+`"transfer_progress"` events and renders them. Currently the panel is
+either not subscribing or the server never broadcasts.
+
+---
+
+## ISSUE 2 — Upload does nothing (files never land in shared/)
+
+**Diagnose:** Open `app/static/js/uploader.js`, `app/api/upload.py`, and
+`app/core/upload_session.py`.
+
+**Expected flow:**
+1. User picks a file (via `#file-input` or drop on `#dropzone`).
+2. `uploader.js` computes SHA-256 in a Web Worker.
+3. POST `/api/upload/init` → gets `session_id`.
+4. Split file into 1 MB chunks; POST each to `/api/upload/chunk`
+   (multipart: session_id, index, crc32, payload).
+5. Send up to `your_lanes` chunks in parallel (scheduler value from WS).
+6. POST `/api/upload/complete`.
+7. Server writes the final file into `shared/` and broadcasts
+   `files_changed`.
+
+**Fix:** determine where it breaks. Likely candidates:
+- uploader.js never attaches a change/drop listener
+- fetch is called but the server endpoint returns 404/500 (check
+  `app/api/upload.py` is actually included in `app/main.py`)
+- the temp file is written but never moved to `shared/` on complete
+
+Add `console.log` in uploader.js at each step and check the browser
+console. Fix whichever step is silent. Confirm by uploading a 5 MB file
+and verifying it appears in `shared/` and in Panel 1 for all clients.
+
+---
+
+## ISSUE 3 — No client → client send (drag file onto another device)
+
+**Diagnose:** Open `app/static/js/sender.js`, `app/static/js/receiver.js`,
+and `app/core/relay.py`.
+
+**Expected flow:**
+1. Every device card in Panel 2 (except the current device) is a drop
+   target with class `drop-target` and `data-device="<id>"`.
+2. Dragging a file onto it opens an offer: client sends WS
+   `{"type":"offer_relay","payload":{"to_device":id,"filename":name,"size":n}}`.
+3. Server creates pending relay, sends WS `"incoming"` to receiver.
+4. Receiver shows modal (Accept/Decline).
+5. On Accept: sender reads file in 1 MB chunks, sends each as a **binary
+   WS frame** with the header format from the spec:
+   `[4B tid_len][tid][8B index][4B crc32][payload]`.
+6. Server forwards each binary frame verbatim to the receiver's socket.
+7. Receiver verifies CRC32 per chunk, saves (File System Access API if
+   available, else Blob fallback), verifies SHA-256 at the end.
+
+**Fix:** implement any missing piece. At minimum, verify:
+- Device cards have `drop-target` class and `data-device` attribute in
+  `panel_devices.js`.
+- Drag events (`dragover`, `drop`) are wired in `sender.js`.
+- Server `app/api/ws.py` handles `offer_relay`, `accept_relay`,
+  `reject_relay`, and binary frames.
+- `relay.py` forwards chunks to the receiver's socket without buffering.
+
+---
+
+## ISSUE 4 — UI not responsive / incomplete
+
+**Diagnose:** Open `app/static/css/style.css`.
+
+**Fix:**
+1. Add mobile breakpoints at `@media (max-width: 900px)` and
+   `@media (max-width: 600px)`:
+   - 3-panel layout collapses to a single column on phones.
+   - Device cards and file rows become full width.
+   - Top bar wraps gracefully (URL hides, pills shrink).
+   - Touch targets ≥ 44 px tall on mobile.
+2. Ensure the layout uses `display: grid` with
+   `grid-template-columns: 2fr 1fr` on desktop (files | devices) and
+   the traffic panel spans full width below.
+3. Dark theme is default; add a `prefers-color-scheme: light` block for
+   users who want light mode (optional).
+4. Make sure the drop zone, upload button, and approval buttons are
+   visually distinct and not clipped on narrow screens.
+5. Test at 375 px width (iPhone SE) and 1440 px width.
+
+---
+
+## ISSUE 5 — 🔥 Browser crashes on large downloads (Brave memory error)
+
+**This is the top priority. It means the file is being loaded fully into
+memory — either on the server, on the client, or both.**
+
+**Server-side fix:**
+Open `app/api/download.py`. The download endpoint MUST NOT read the whole
+file into RAM. Use Starlette's `FileResponse` (streams in 64 KB blocks,
+supports HTTP Range automatically):
+
+```python
+from fastapi.responses import FileResponse
+
+@router.get("/api/download/{name}")
+async def download(name: str):
+    path = file_manager.resolve(name)
+    return FileResponse(
+        path,
+        filename=path.name,
+        media_type="application/octet-stream",
+    )
+Do NOT use Response(content=open(path, "rb").read()).
+Do NOT use StreamingResponse with a generator that reads the whole file
+at once — it must yield in small blocks (FileResponse already does this).
+
+Client-side fix:
+Open app/static/js/panel_files.js and app/static/js/downloader.js.
+Large-file downloads MUST NOT use fetch().blob() or await resp.arrayBuffer().
+
+Two acceptable approaches:
+
+Native browser download (preferred):
+const a = document.createElement("a");
+a.href = `/api/download/${encodeURIComponent(name)}`;
+a.download = name;
+document.body.appendChild(a);
+a.click();
+a.remove();
+The browser streams to disk with zero JS memory. Supports Range/resume
+natively. Use this for ALL downloads regardless of size.
+
+Streaming fetch with progress (only if you need an inline progress bar):
+const resp = await fetch(url);
+const total = +resp.headers.get("content-length");
+let received = 0;
+const reader = resp.body.getReader();
+// If File System Access API is available, stream chunks to disk:
+const handle = await window.showSaveFilePicker({ suggestedName: name });
+const writable = await handle.createWritable();
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  await writable.write(value);
+  received += value.byteLength;
+  updateProgress(received, total);
+}
+await writable.close();
+If File System Access API is unavailable (Safari, Firefox), fall back
+to approach #1 (native download). NEVER buffer the whole file in JS.
+
+Delete any code that does:
+
+await response.blob()
+
+await response.arrayBuffer()
+
+new Blob(chunks) where chunks accumulates the whole file
+
+URL.createObjectURL(blob) for large files
+
+Verify the fix:
+
+Put a 5 GB file in shared/.
+
+Watch the server's RAM: it must stay flat (< 100 MB) during the
+entire download.
+
+Watch the browser's RAM (Task Manager): it must stay flat.
+
+Download must complete without crashing.
+
+Test in Brave, Chrome, Firefox. In Safari, downloads must still work
+via native method.
+
+Do NOT change
+Do not modify the WebSocket protocol or the message schema.
+
+Do not modify the security model (join code, admin token, approval).
+
+Do not change the chunk size (1 MB) or lane scheduler values.
+
+Do not rewrite hub.py, security.py, config.py.
+
+Do not add dependencies.
+
+Verification checklist (test all after fixes)
+□ Open dashboard on 2 devices. Both see each other in Panel 2.
+□ Approve the guest from the host. Guest sees full dashboard.
+□ Upload a 100 MB file from guest → appears in shared/ and Panel 1
+for both. Traffic panel shows ⬆ row with live percent.
+□ Download a 5 GB file from shared/ → does NOT crash Brave.
+Server RAM stays under 200 MB. Browser tab RAM stays under 500 MB.
+□ Drag a 50 MB file onto the other device's card → receiver sees
+modal → Accept → file saves correctly, SHA-256 verified.
+□ Open dashboard on a phone (375 px) → UI is usable, no clipping,
+all buttons reachable.
+□ Kill WiFi mid-upload → reconnect → resume works, only missing
+chunks resent.
+□ Rotate join code from host → old code fails, new code works.
+When finished, report: what was broken, what you changed, and paste the
+before/after code for each of the 5 issues.
+
+## REPORT FORMAT
+
+Before changing code, produce a short report for each of the 5 issues:
+
+  ISSUE N: <name>
+  - Root cause found: <one sentence>
+  - File(s) involved: <list>
+  - Fix approach: <one sentence>
+
+Wait for confirmation, THEN apply the fixes.
+
+After all fixes:
+  - Paste git diff (or before/after) per issue.
+  - Paste terminal output from `python run.py` at startup.
+  - Paste browser console output during a 5 MB upload.
+  - Confirm each item on the verification checklist.

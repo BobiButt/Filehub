@@ -1,0 +1,17 @@
+[project]
+name = "filehub"
+version = "1.0.0"
+description = "LAN file transfer hub — AirDrop-style sharing over a hotspot, browser only"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]

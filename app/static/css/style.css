@@ -1,0 +1,376 @@
+/* FileHub — dark theme, mobile-first, zero dependencies. */
+
+:root {
+  --bg: #0e1117;
+  --panel: #161b22;
+  --panel-2: #1c2230;
+  --border: #2a3140;
+  --fg: #e6edf3;
+  --fg-dim: #9aa4b2;
+  --accent: #4a9eff;
+  --accent-2: #2d7dd6;
+  --ok: #3fb950;
+  --warn: #d29922;
+  --danger: #f85149;
+  --radius: 10px;
+  --gap: 14px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --files-h: 44vh;      /* server files panel height cap */
+  --devices-h: 44vh;
+  --traffic-h: 32vh;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-x: hidden;
+}
+
+/* =============================================================== top bar */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.topbar .logo { font-weight: 700; font-size: 17px; white-space: nowrap; }
+.topbar .logo span { color: var(--accent); }
+.topbar .server-url {
+  font-family: var(--mono); font-size: 12px; color: var(--fg-dim);
+  max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.topbar .spacer { flex: 1 1 auto; }
+.pill {
+  font-size: 12px; padding: 4px 8px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 999px; white-space: nowrap;
+}
+.pill.online { color: var(--ok); }
+.pill.offline { color: var(--danger); }
+
+/* ============================================================== buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 40px; padding: 8px 14px;
+  background: var(--panel-2); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 8px;
+  font: inherit; font-size: 14px; cursor: pointer;
+  transition: background .15s;
+}
+.btn:hover { background: #232a38; }
+.btn:active { transform: translateY(1px); }
+.btn-sm { min-height: 34px; padding: 6px 10px; font-size: 13px; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-2); }
+.btn-danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+.btn-danger:hover { background: rgba(248,81,73,.1); }
+
+/* =============================================================== panels */
+.panels {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--gap);
+  padding: var(--gap);
+  align-items: start;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  min-width: 0;
+}
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 10px;
+}
+.panel-head h2, .panel-head h3 { margin: 0; }
+.panel h2 { font-size: 16px; }
+.panel h3 { font-size: 14px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: .05em; }
+
+/* Fixed-height scroll areas — server files + devices + traffic */
+.scroll-box {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #3a4255 transparent;
+}
+.scroll-box::-webkit-scrollbar { width: 8px; }
+.scroll-box::-webkit-scrollbar-thumb { background: #3a4255; border-radius: 4px; }
+
+#files-list { max-height: var(--files-h); }
+#upload-list { max-height: 30vh; margin-bottom: 8px; }
+#devices-list { max-height: var(--devices-h); }
+#pending-list { max-height: 30vh; }
+#traffic-list { max-height: var(--traffic-h); min-height: 120px; }
+
+.panel-files .dropzone { margin-bottom: 10px; }
+
+/* ============================================================ dropzone */
+.dropzone {
+  padding: 18px 14px;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-size: 14px;
+  transition: border-color .15s, background .15s;
+  cursor: pointer;
+}
+.dropzone.dragover { border-color: var(--accent); background: rgba(74,158,255,.08); color: var(--fg); }
+
+/* ========================================================= device card */
+.device-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.device-card.drop-target.dragover {
+  border-color: var(--accent);
+  background: rgba(74,158,255,.1);
+}
+.device-icon { font-size: 22px; flex-shrink: 0; }
+.device-info { flex: 1; min-width: 0; }
+.device-name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device-meta { font-size: 12px; color: var(--fg-dim); }
+.badge {
+  display: inline-block; padding: 1px 6px; border-radius: 6px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  background: #2a3140; color: var(--fg-dim);
+}
+.badge-host { background: rgba(74,158,255,.15); color: var(--accent); }
+.send-btn { flex-shrink: 0; }
+
+/* ================================================================ files */
+.file-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 6px; border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.file-row:last-child { border-bottom: none; }
+.file-icon { font-size: 18px; }
+.file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-size { color: var(--fg-dim); font-size: 12px; font-family: var(--mono); }
+.file-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ============================================================== traffic */
+.traffic-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px; font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.traffic-row:last-child { border-bottom: none; }
+.traffic-time { font-family: var(--mono); font-size: 11px; color: var(--fg-dim); flex-shrink: 0; }
+.traffic-arrow { font-size: 14px; }
+.traffic-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.traffic-status { font-size: 12px; color: var(--fg-dim); flex-shrink: 0; }
+
+/* ============================================================== overlays */
+.overlay {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0,0,0,.6);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.dialog {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+  width: 100%; max-width: 420px;
+  max-height: 90vh; overflow-y: auto;
+}
+.dialog h1 { margin: 0 0 8px; font-size: 22px; }
+.dialog h1 span { color: var(--accent); }
+.dialog p { margin: 0 0 14px; color: var(--fg-dim); font-size: 14px; }
+.dialog label { display: block; font-size: 13px; margin: 12px 0 4px; color: var(--fg-dim); }
+.dialog input {
+  width: 100%; min-height: 44px; padding: 10px 12px;
+  background: var(--panel-2); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 8px;
+  font: inherit; font-size: 16px; /* prevents iOS zoom */
+}
+.dialog input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.code-input { font-family: var(--mono); font-size: 22px; letter-spacing: .4em; text-align: center; }
+.dialog-error { color: var(--danger); font-size: 13px; min-height: 18px; margin-top: 8px; }
+.dialog .btn-primary { width: 100%; margin-top: 14px; min-height: 46px; }
+
+/* ============================================================ progress */
+.progress { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; margin: 8px 0 4px; }
+.progress-bar { height: 100%; background: var(--accent); transition: width .2s; }
+.progress-label { font-size: 12px; color: var(--fg-dim); }
+
+/* ============================================================ spinner */
+.spinner {
+  width: 36px; height: 36px; margin: 0 auto 12px;
+  border: 3px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============================================================== toast */
+#toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(200%);
+  background: var(--panel-2); color: var(--fg);
+  padding: 10px 18px; border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 14px; z-index: 100;
+  transition: transform .25s;
+  max-width: 90vw;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ========================================================= send-to modal */
+.sendto-file-info {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--fg-dim);
+  text-align: center;
+  word-break: break-all;
+}
+
+.sendto-file-banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  background: rgba(74, 158, 255, .08);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.sendto-file-banner span {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px;
+}
+
+/* ========================================================= send-to modal */
+.sendto-list {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 50vh; overflow-y: auto;
+  margin: 8px 0;
+}
+
+.sendto-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  position: relative;
+  cursor: pointer;
+  min-height: 56px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: border-color .15s, background .15s, box-shadow .15s, transform .1s;
+}
+
+.sendto-item:hover { 
+  border-color: var(--accent); 
+  background-color: #232a38; 
+}
+
+.sendto-item:active { 
+  transform: scale(0.99); 
+}
+
+/* Strong selection state so you can clearly see the chosen device */
+.sendto-item.selected {
+  border-color: var(--accent);
+  background: rgba(74, 158, 255, .15);
+  box-shadow: 0 0 0 2px rgba(74, 158, 255, .35) inset,
+              0 0 16px rgba(74, 158, 255, .25);
+  transform: translateX(2px);
+}
+
+.sendto-item.selected::after {
+  content: "✓";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 20px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Keeps text from overlapping the checkmark icon */
+.sendto-item.selected .sendto-meta {
+  padding-right: 32px;
+}
+
+.sendto-icon { font-size: 24px; flex-shrink: 0; }
+.sendto-meta { flex: 1; min-width: 0; }
+.sendto-name {
+  font-weight: 600; font-size: 14px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sendto-sub {
+  font-size: 12px; color: var(--fg-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sendto-actions { display: flex; gap: 8px; margin-top: 12px; }
+.sendto-actions .btn { flex: 1; }
+
+.hidden { display: none !important; }
+
+/* Make the hidden file input actually reachable on iOS Safari. */
+#sendto-input[hidden],
+#file-input[hidden] {
+  display: block !important;
+  position: absolute !important;
+  width: 1px; height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* =========================================================== responsive */
+@media (max-width: 900px) {
+  :root { --gap: 10px; }
+  .panels { grid-template-columns: 1fr; padding: var(--gap); }
+  .topbar { padding: 6px 10px; gap: 6px; }
+  .topbar .server-url { display: none; }
+  .topbar .pill { font-size: 11px; padding: 3px 7px; }
+  #files-list { max-height: 40vh; }
+  #devices-list { max-height: 40vh; }
+  #traffic-list { max-height: 30vh; }
+}
+
+@media (max-width: 600px) {
+  body { font-size: 14px; }
+  .logo { font-size: 15px; }
+  .panel { padding: 10px; }
+  .panel h2 { font-size: 15px; }
+  .file-row { padding: 10px 4px; }
+  .file-size { display: none; } /* keep rows tight on phones */
+  .file-actions .btn { padding: 6px 8px; font-size: 12px; }
+  .device-card { padding: 12px 10px; }
+  .traffic-row { font-size: 12px; padding: 8px 2px; }
+  .traffic-status { font-size: 11px; }
+  .dialog { padding: 18px; }
+  #toast { bottom: 10px; font-size: 13px; }
+}
+
+/* iOS safe areas */
+@supports (padding: env(safe-area-inset-bottom)) {
+  body { padding-bottom: env(safe-area-inset-bottom); }
+}

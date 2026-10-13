@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Project runtime
+shared/*
+!shared/.gitkeep
+tmp/*
+!tmp/.gitkeep
+sessions/*
+!sessions/.gitkeep
+trusted_devices.db
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Env
+.env
+.env.*
+!.env.example
