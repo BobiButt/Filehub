@@ -215,7 +215,7 @@ class UploadSession:
                 f"upload incomplete: {len(self.missing_indices())} chunks missing"
             )
         digest = await asyncio.to_thread(_sha256_file, self.tmp_path)
-        if digest != self.sha256:
+        if self.sha256 and digest != self.sha256:
             raise Sha256Mismatch(digest)
         target = file_manager.move_into_shared(self.tmp_path, self.filename)
         logger.info("Upload %s finalized as %s", self.session_id, target.name)

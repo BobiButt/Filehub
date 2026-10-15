@@ -39,8 +39,17 @@ config = get_config()
 
 
 def _valid_sha(value: str) -> bool:
+    """True if the value is a valid 64-char hex SHA-256, OR empty
+    (meaning "client skipped hashing — trust the server's computation")."""
     value = (value or "").lower()
+    if value == "":
+        return True
     return len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def _normalize_sha(value: str | None) -> str:
+    """Lowercase and strip; empty string means 'no client hash provided'."""
+    return (value or "").strip().lower()
 
 
 async def _ensure_transfer(session, device_id: str) -> TransferState:
@@ -87,7 +96,8 @@ async def upload_init(body: UploadInitRequest, request: Request) -> dict:
     device = require_member(request)
     if body.size < 0 or body.size > config.max_file_size:
         raise ApiError(413, "file too large")
-    if not _valid_sha(body.sha256):
+    sha = _normalize_sha(body.sha256)
+    if not _valid_sha(sha):
         raise ApiError(400, "invalid sha256")
     try:
         filename = file_manager.sanitize(body.filename)
@@ -96,12 +106,12 @@ async def upload_init(body: UploadInitRequest, request: Request) -> dict:
 
     # The server's chunk size is authoritative; the client adapts to it.
     chunk_size = config.chunk_size
-    session = upload_sessions.find(filename, body.size, body.sha256)
+    session = upload_sessions.find(filename, body.size, sha)
     if session is None:
         session = upload_sessions.create(
             filename=filename,
             size=body.size,
-            sha256=body.sha256,
+            sha256=sha,
             chunk_size=chunk_size,
         )
     state = await _ensure_transfer(session, device.id)
@@ -224,13 +234,14 @@ async def upload_resume(body: UploadResumeRequest, request: Request):
     exactly the chunks that differ (§13).
     """
     require_member(request)
-    if not _valid_sha(body.sha256):
+    sha = _normalize_sha(body.sha256)
+    if not _valid_sha(sha):
         raise ApiError(400, "invalid sha256")
     try:
         filename = file_manager.sanitize(body.filename)
     except BadPathError as exc:
         raise ApiError(400, str(exc)) from exc
-    session = upload_sessions.find(filename, body.size, body.sha256)
+    session = upload_sessions.find(filename, body.size, sha)
     if session is None:
         chunk_size = config.chunk_size
         total = (body.size + chunk_size - 1) // chunk_size

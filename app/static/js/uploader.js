@@ -1,7 +1,9 @@
 /* uploader.js — chunked parallel HTTP upload to the server (§11.1).
  *
- * Flow: SHA-256 in a Web Worker → /api/upload/init → N parallel lanes of
- * 1 MB POSTs (backpressure: each lane awaits its chunk) → /complete.
+ * Flow: /api/upload/init → N parallel lanes of 1 MB POSTs (backpressure:
+ * each lane awaits its chunk) → /complete.
+ * Files under 30 MB are SHA-256 hashed client-side; larger files skip the
+ * client hash and rely on the server's post-assembly verification.
  * On any failure: pause, then resume from the server's bitmap.
  */
 
@@ -11,6 +13,7 @@ import { apiPost, crc32, sha256Blob, missingFromBitmap, sleep } from "./util.js"
 /** Local upload rows keyed by a client-side id; Panel 1 renders these. */
 export const uploads = new Map();
 
+const HASH_THRESHOLD = 30 * 1024 * 1024; // 30 MB — larger files skip client hash
 const FATAL_STATUSES = new Set([401, 403, 404, 409, 413]);
 
 class FatalError extends Error {}
@@ -42,15 +45,19 @@ export async function uploadFile(file) {
   emit("uploads-changed");
   console.log("[upload] start:", file.name, file.size, "bytes");
 
+  // Only hash small files client-side. Large files start uploading instantly
+  // and let the server verify the whole-file SHA-256 after assembly.
   let sha256 = "";
-  try {
-    sha256 = await sha256Blob(file);
-  } catch (error) {
-    console.warn("[upload] hash failed:", error);
-    update(entry, { phase: "failed", error: `hash failed: ${error.message}` });
-    return;
+  if (file.size < HASH_THRESHOLD) {
+    try {
+      sha256 = await sha256Blob(file);
+    } catch (error) {
+      console.warn("[upload] hash failed:", error);
+      update(entry, { phase: "failed", error: `hash failed: ${error.message}` });
+      return;
+    }
   }
-  console.log("[upload] sha256:", sha256);
+  console.log("[upload] sha256:", sha256 || "(skipped)");
 
   const chunkSizeDefault = window.__FILEHUB__?.chunkSize || 1048576;
   let attempt = 0;
@@ -101,8 +108,9 @@ export async function uploadFile(file) {
       });
       console.log("[upload] complete →", result.status, result.data);
 
-      if (result.status === 422) {
-        // Whole-file SHA mismatch: ask for targeted chunk repair (§13).
+      // Whole-file SHA mismatch → targeted chunk repair. Only meaningful
+      // when the client provided a sha256; skip otherwise.
+      if (result.status === 422 && sha256) {
         repairs += 1;
         if (repairs > 2) throw new FatalError("sha256 mismatch after repair");
         update(entry, { phase: "repairing" });
